@@ -1,0 +1,395 @@
+import Config
+
+# config/runtime.exs is executed for all environments, including
+# during releases. It is executed after compilation and before the
+# system starts, so it is typically used to load production configuration
+# and secrets from environment variables or elsewhere. Do not define
+# any compile-time configuration in here, as it won't be applied.
+# The block below contains prod specific runtime configuration.
+
+# ## Using releases
+#
+# If you use `mix release`, you need to explicitly enable the server
+# by passing the PHX_SERVER=true when you start it:
+#
+#     PHX_SERVER=true bin/AshPhoenixStarter start
+#
+# Alternatively, you can use `mix phx.gen.release` to generate a `bin/server`
+# script that automatically sets the env var above.
+if System.get_env("PHX_SERVER") do
+  config :ash_phoenix_starter, AshPhoenixStarterWeb.Endpoint, server: true
+end
+
+if config_env() == :prod do
+  database_url =
+    System.get_env("DATABASE_URL") ||
+      raise """
+      environment variable DATABASE_URL is missing.
+      For example: ecto://USER:PASS@HOST/DATABASE
+      """
+
+  maybe_ipv6 = if System.get_env("ECTO_IPV6") in ~w(true 1), do: [:inet6], else: []
+
+  config :ash_phoenix_starter, AshPhoenixStarter.Repo,
+    # ssl: true,
+    url: database_url,
+    pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10"),
+    # For machines with several cores, consider starting multiple pools of `pool_size`
+    # pool_count: 4,
+    socket_options: maybe_ipv6
+
+  # The secret key base is used to sign/encrypt cookies and other secrets.
+  # A default value is used in config/dev.exs and config/test.exs but you
+  # want to use a different value for prod and you most likely don't want
+  # to check this value into version control, so we use an environment
+  # variable instead.
+  secret_key_base =
+    System.get_env("SECRET_KEY_BASE") ||
+      raise """
+      environment variable SECRET_KEY_BASE is missing.
+      You can generate one by calling: mix phx.gen.secret
+      """
+
+  host = System.get_env("RENDER_EXTERNAL_HOSTNAME") || System.get_env("PHX_HOST") || "example.com"
+  port = String.to_integer(System.get_env("PORT") || "10000")
+
+  use_self_signed = System.get_env("USE_SIGNED_SSL") == nil
+  _cert_path = Application.app_dir(:ash_phoenix_starter, "priv/cert")
+
+  {certfile, keyfile, _ca} =
+    if use_self_signed do
+      {Path.join("priv/cert", "selfsigned.pem"), Path.join("priv/cert", "selfsigned_key.pem"),
+       Path.join("priv/cert", "ca.pem")}
+    else
+      {Path.join("priv/cert", "fullchain.pem"), Path.join("priv/cert", "fullchain.pem"),
+       Path.join("priv/cert", "ca.pem")}
+    end
+
+  cluster_nodes =
+    case System.get_env("CLUSTER_NODES") do
+      nil ->
+        []
+
+      val ->
+        String.split(val, ",", trim: true) |> Enum.map(&(&1 |> String.trim() |> String.to_atom()))
+    end
+
+  if cluster_nodes != [] do
+    config :libcluster,
+      topologies: [
+        oci_cluster: [
+          strategy: Cluster.Strategy.Epmd,
+          config: [hosts: cluster_nodes]
+        ]
+      ]
+  end
+
+  config :ash_phoenix_starter, AshPhoenixStarterWeb.Endpoint,
+    url: [host: host, port: 443, scheme: "https"],
+    http: [
+      # Enable IPv6 and bind on all interfaces.
+      # Set it to  {0, 0, 0, 0, 0, 0, 0, 1} for local network only access.
+      # See the documentation on https://hexdocs.pm/bandit/Bandit.html#t:options/0
+      # for details about using IPv6 vs IPv4 and loopback vs public addresses.
+      ip: {0, 0, 0, 0, 0, 0, 0, 0},
+      port: port
+    ],
+    https: [
+      port: 443,
+      cipher_suite: :strong,
+      otp_app: :ash_phoenix_starter,
+      keyfile: keyfile,
+      certfile: certfile
+    ],
+    secret_key_base: secret_key_base
+
+  config :ash_phoenix_starter,
+    token_signing_secret:
+      System.get_env("TOKEN_SIGNING_SECRET") ||
+        raise("Missing environment variable `TOKEN_SIGNING_SECRET`!")
+
+  config :ash_phoenix_starter,
+    site_title_prefix: System.get_env("SITE_TITLE_PREFIX") || ""
+
+  config :ash_phoenix_starter,
+    google_site_verification: System.get_env("GOOGLE_SITE_VERIFICATION") || ""
+
+  config :ash_phoenix_starter,
+    site_default_locale: System.get_env("SITE_DEFAULT_LOCALE") || ""
+
+  config :ash_phoenix_starter,
+    site_default_mask_icon_color: System.get_env("SITE_DEFAULT_MASK_ICON_COLOR") || ""
+
+  config :ash_phoenix_starter,
+    site_default_windows_tile_color: System.get_env("SITE_DEFAULT_WINDOWS_TILE_COLOR") || ""
+
+  config :ash_phoenix_starter,
+    site_themes_list: System.get_env("SITE_THEMES_LIST") || ""
+
+  config :ash_phoenix_starter,
+    site_default_description: System.get_env("SITE_DEFAULT_DESCRIPTION") || ""
+
+  config :ash_phoenix_starter,
+    site_webmaster: System.get_env("SITE_WEBMASTER") || ""
+
+  config :ash_phoenix_starter,
+    site_default_suffix: System.get_env("SITE_DEFAULT_SUFFIX") || ""
+
+  config :ash_phoenix_starter,
+    site_default_title: System.get_env("SITE_DEFAULT_TITLE") || ""
+
+  config :ash_phoenix_starter,
+    site_author: System.get_env("SITE_AUTHOR") || ""
+
+  config :ash_phoenix_starter,
+    site_name: System.get_env("SITE_NAME") || ""
+
+  config :ash_phoenix_starter,
+    facebook_app_id: System.get_env("FACEBOOK_APP_ID") || ""
+
+  config :ash_phoenix_starter,
+    twitter_site_name: System.get_env("TWITTER_SITE_NAME") || ""
+
+  config :ash_phoenix_starter,
+    twitter_site_id: System.get_env("TWITTER_SITE_ID") || ""
+
+  config :ash_phoenix_starter,
+    twitter_site_creator: System.get_env("TWITTER_SITE_CREATOR") || ""
+
+  config :ash_phoenix_starter,
+    twitter_site_creator_id: System.get_env("TWITTER_SITE_CREATOR_ID") || ""
+
+  config :ash_phoenix_starter,
+    ssl_endpoint_port: System.get_env("SSL_ENDPOINT_PORT") || 443
+
+  config :ash_phoenix_starter,
+    endpoint_same_site: System.get_env("ENDPOINT_SAME_SITE") || ""
+
+  config :ash_phoenix_starter,
+    endpoint_signing_salt: System.get_env("ENDPOINT_SIGNING_SALT") || ""
+
+  config :ash_phoenix_starter,
+    endpoint_key: System.get_env("ENDPOINT_KEY") || ""
+
+  store = System.get_env("ENDPOINT_STORE") || nil
+
+  store =
+    case store do
+      nil -> :cookie
+      data -> String.to_atom(data)
+    end
+
+  config :ash_phoenix_starter,
+    endpoint_store: store
+
+  super_users =
+    case System.get_env("SUPER_USERS") do
+      nil -> ["admin@example.com"]
+      val -> String.split(val, ",", trim: true) |> Enum.map(&String.trim/1)
+    end
+
+  config :ash_phoenix_starter,
+    super_users: super_users
+
+  config :ex_aws,
+    access_key_id: System.get_env("STORAGE_ACCESS_KEY"),
+    secret_access_key: System.get_env("STORAGE_SECRET_KEY"),
+    region: System.get_env("OCI_REGION") || "us-ashburn-1",
+    s3: [
+      scheme: "https://",
+      host: System.get_env("OCI_STORAGE_HOST"),
+      port: 443,
+      virtual_host: false
+    ]
+
+  config :ash_phoenix_starter, Oban,
+    repo: AshPhoenixStarter.Repo,
+    plugins: [
+      {Oban.Plugins.Pruner, max_age: 60 * 60 * 24 * 7},
+      {Oban.Plugins.Cron,
+       crontab: [
+         {"0 2 * * *", AshPhoenixStarter.Billing.Workers.SyncStripeUsageWorker}
+       ]}
+    ],
+    queues: [
+      default: 10,
+      ash_notifications: 10,
+      mailers: 20
+    ]
+
+  global_ttl_env = System.get_env("GLOBAL_TTL_INTERVAL") || "60"
+  global_check_env = System.get_env("GLOBAL_CHECK_INTERVAL") || "120"
+
+  tenant_ttl_env = System.get_env("TENANT_TTL_INTERVAL") || "15"
+  tenant_check_env = System.get_env("TENANT_CHECK_INTERVAL") || "30"
+
+  global_ttl_minutes = String.to_integer(global_ttl_env)
+  global_check_seconds = String.to_integer(global_check_env)
+
+  tenant_ttl_minutes = String.to_integer(tenant_ttl_env)
+  tenant_check_seconds = String.to_integer(tenant_check_env)
+
+  config :ash_phoenix_starter, :global_cache_config,
+    ttl_check_interval: :timer.seconds(tenant_check_seconds),
+    global_ttl: :timer.minutes(tenant_ttl_minutes)
+
+  config :ash_phoenix_starter, :tenant_cache_config,
+    ttl_check_interval: :timer.seconds(global_check_seconds),
+    global_ttl: :timer.minutes(global_ttl_minutes)
+
+  config :ash_phoenix_starter, :timezone_cache_config,
+    ttl_check_interval: :timer.seconds(3600),
+    global_ttl: :timer.hours(24)
+
+  mailer_config =
+    case mailer_provider do
+      :resend ->
+        [
+          adapter: Swoosh.Adapters.Resend,
+          api_key: System.fetch_env!("RESEND_API_KEY")
+        ]
+
+      :brevo ->
+        [
+          adapter: Swoosh.Adapters.Brevo,
+          api_key: System.fetch_env!("BREVO_API_KEY")
+        ]
+
+      :postmark ->
+        [
+          adapter: Swoosh.Adapters.Postmark,
+          api_key: System.fetch_env!("POSTMARK_SERVER_TOKEN")
+        ]
+
+      :mailgun ->
+        [
+          adapter: Swoosh.Adapters.Mailgun,
+          api_key: System.fetch_env!("MAILGUN_API_KEY"),
+          domain: System.fetch_env!("MAILGUN_DOMAIN")
+        ]
+
+      :zeptomail ->
+        [
+          adapter: Swoosh.Adapters.ZeptoMail,
+          api_key: System.fetch_env!("ZEPTOMAIL_API_KEY")
+        ]
+
+      :smtp ->
+        [
+          adapter: Swoosh.Adapters.SMTP,
+          relay: System.fetch_env!("SMTP_HOST"),
+          port: String.to_integer(System.get_env("SMTP_PORT", "587")),
+          username: System.get_env("SMTP_USER"),
+          password: System.get_env("SMTP_PASS"),
+          ssl: System.get_env("SMTP_SSL", "false") == "true",
+          tls: :if_available,
+          auth: :always
+        ]
+
+      :local ->
+        [adapter: Swoosh.Adapters.Local]
+    end
+
+  config :ash_phoenix_starter, AshPhoenixStarter.Mailer, mailer_config
+
+  config :ash_phoenix_starter, Hotel.Vault,
+         ciphers: [
+           default: {
+             Cloak.Ciphers.AES.GCM,
+             tag: "AES.GCM.V1",
+             key: Base.decode64!(System.fetch_env!("CLOAK_VAULT_KEY")),
+             iv_length: 12
+           }
+         ]
+
+  config :ash_phoenix_starter, :mpp_config, %{
+    "stripe_secret_key" => System.get_env("STRIPE_SECRET_KEY"),
+    "usdc_rpc_url" => System.get_env("MPP_USDC_RPC_URL"),
+    "usdc_contract_address" => System.get_env("MPP_USDC_CONTRACT"),
+    "recipient_wallet" => System.get_env("MPP_TREASURY_WALLET")
+  }
+
+  config :ash_phoenix_starter, :google_wallet,
+         issuer_id: System.fetch_env!("GOOGLE_WALLET_ISSUER_ID"),
+         class_suffix: System.get_env("GOOGLE_WALLET_CLASS_SUFFIX", "hotel_stay_v1"),
+         service_account_email: System.fetch_env!("GOOGLE_WALLET_CLIENT_EMAIL"),
+         private_key_pem: System.fetch_env!("GOOGLE_WALLET_PRIVATE_KEY_PEM")
+
+  config :ash_phoenix_starter, :apple_wallet,
+         pass_type_id: System.fetch_env!("APPLE_PASS_TYPE_ID"),
+         team_id: System.fetch_env!("APPLE_TEAM_ID"),
+         cert_pem_path: System.fetch_env!("APPLE_PASS_CERT_PATH"),
+         key_pem_path: System.fetch_env!("APPLE_PASS_KEY_PATH"),
+         wwdr_pem_path: System.fetch_env!("APPLE_WWDR_CERT_PATH"),
+         icon_png_path: Application.app_dir(:hotel, "priv/wallet/icon.png"),
+         logo_png_path: Application.app_dir(:hotel, "priv/wallet/logo.png")
+end
+
+config :ash_phoenix_starter,
+       bookings_graphql_url: System.fetch_env!("BOOKINGS_GRAPHQL_URL"),
+       bookings_graphql_token: System.fetch_env!("BOOKINGS_GRAPHQL_TOKEN"),
+  # ## SSL Support
+  #
+  # To get SSL working, you will need to add the `https` key
+  # to your endpoint configuration:
+  #
+  #     config :ash_phoenix_starter, AshPhoenixStarterWeb.Endpoint,
+  #       https: [
+  #         ...,
+  #         port: 443,
+  #         cipher_suite: :strong,
+  #         keyfile: System.get_env("SOME_APP_SSL_KEY_PATH"),
+  #         certfile: System.get_env("SOME_APP_SSL_CERT_PATH")
+  #       ]
+  #
+  # The `cipher_suite` is set to `:strong` to support only the
+  # latest and more secure SSL ciphers. This means old browsers
+  # and clients may not be supported. You can set it to
+  # `:compatible` for wider support.
+  #
+  # `:keyfile` and `:certfile` expect an absolute path to the key
+  # and cert in disk or a relative path inside priv, for example
+  # "priv/ssl/server.key". For all supported SSL configuration
+  # options, see https://hexdocs.pm/plug/Plug.SSL.html#configure/1
+  #
+  # We also recommend setting `force_ssl` in your config/prod.exs,
+  # ensuring no data is ever sent via http, always redirecting to https:
+  #
+  #     config :ash_phoenix_starter, AshPhoenixStarterWeb.Endpoint,
+  #       force_ssl: [hsts: true]
+  #
+  # Check `Plug.SSL` for all available options in `force_ssl`.
+
+  # ## Configuring the mailer
+  #
+  # In production you need to configure the mailer to use a different adapter.
+  # Here is an example configuration for Mailgun:
+  #
+  #     config :ash_phoenix_starter, AshPhoenixStarter.Mailer,
+  #       adapter: Swoosh.Adapters.Mailgun,
+  #       api_key: System.get_env("MAILGUN_API_KEY"),
+  #       domain: System.get_env("MAILGUN_DOMAIN")
+  #
+  # Most non-SMTP adapters require an API client. Swoosh supports Req, Hackney,
+  # and Finch out-of-the-box. This configuration is typically done at
+  # compile-time in your config/prod.exs:
+  #
+  #     config :swoosh, :api_client, Swoosh.ApiClient.Req
+  #
+  # See https://hexdocs.pm/swoosh/Swoosh.html#module-installation for details.
+
+  ### using caddy 
+  # config :ash_phoenix_starter, AshPhoenixStarterWeb.Endpoint,
+  # url: [host: host, port: 443, scheme: "https"],
+  # http: [
+  #   ip: {127, 0, 0, 1},
+  #   port: port
+  # ],
+  # secret_key_base: secret_key_base
+
+  config :ash_phoenix_starter, AshPhoenixStarter.Repo,
+    ssl: [verify: :verify_none],
+    url: database_url,
+    pool_size: String.to_integer(System.get_env("POOL_SIZE") || "15"),
+    socket_options: maybe_ipv6
+end

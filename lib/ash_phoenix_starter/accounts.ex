@@ -1,0 +1,34 @@
+defmodule AshPhoenixStarter.Accounts do
+  use Ash.Domain,
+    otp_app: :ash_phoenix_starter,
+    extensions: [AshOps]
+
+  resources do
+    resource AshPhoenixStarter.Accounts.Token
+
+    resource AshPhoenixStarter.Accounts.User do
+      define :get_user_by_id, action: :read, get_by_id: [:id]
+    end
+
+    resource AshPhoenixStarter.Accounts.Organization
+    resource AshPhoenixStarter.Accounts.UserOrganization
+
+    resource AshPhoenixStarter.Accounts.Merchant
+    resource AshPhoenixStarter.Accounts.Customer
+    resource AshPhoenixStarter.Accounts.Vendor
+
+    resource AshPhoenixStarter.Accounts.Group
+    resource AshPhoenixStarter.Accounts.UserGroup
+    resource AshPhoenixStarter.Accounts.GroupPermission
+
+    resource AshPhoenixStarter.Accounts.UserImpersonation
+
+    resource AshPhoenixStarter.Accounts.Invitation
+    resource AshPhoenixStarter.Accounts.VendorRegionLocation
+    resource AshPhoenixStarter.Accounts.MerchantRegionLocation
+
+    resource AshPhoenixStarter.Accounts.UserNotification do
+      define :notify, action: :create
+    end
+  end
+end

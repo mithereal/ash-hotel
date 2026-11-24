@@ -1,0 +1,212 @@
+defmodule AshPhoenixStarterWeb.Router do
+  use AshPhoenixStarterWeb, :router
+
+  use AshAuthentication.Phoenix.Router
+
+  use AshPhoenixStarter.Cldr.Routes, helpers: false
+
+  import AshAuthentication.Plug.Helpers
+  import Tussle.Routes
+
+  pipeline :browser do
+    plug :accepts, ["html"]
+    plug :fetch_session
+    plug :fetch_live_flash
+    plug :put_root_layout, html: {AshPhoenixStarterWeb.Layouts, :root}
+    plug :protect_from_forgery
+    plug :put_secure_browser_headers
+    plug :load_from_session
+    plug AshPhoenixStarterWeb.Plugs.MaintenanceMode
+    plug AshPhoenixStarterWeb.Plugs.TenantBandwidthMeter
+
+    plug Cldr.Plug.PutLocale,
+      apps: [:cldr, :gettext],
+      from: [:path, :query, :session],
+      cldr: AshPhoenixStarter.Cldr,
+      gettext: AshPhoenixStarterWeb.Gettext
+  end
+
+  pipeline :api do
+    plug :accepts, ["json"]
+    plug :load_from_bearer
+    plug :set_actor, :user
+    plug AshPhoenixStarterWeb.Plugs.MaintenanceMode
+  end
+
+  pipeline :tus do
+    plug :fetch_session
+    plug :load_from_session
+    plug :load_from_bearer
+    plug :set_actor, :user
+    plug :require_tus_user
+    plug AshPhoenixStarterWeb.Plugs.MaintenanceMode
+  end
+
+  scope "/api/json" do
+    pipe_through [:api]
+
+    forward "/swaggerui", OpenApiSpex.Plug.SwaggerUI,
+      path: "/api/json/open_api",
+      default_model_expand_depth: 4
+
+    forward "/", AshPhoenixStarterWeb.AshJsonApiRouter
+  end
+
+  scope "/api", AshPhoenixStarterWeb do
+    pipe_through :api
+
+    post "/webhooks/license", LicenseWebhookController, :update_license
+  end
+
+  scope "/files", AshPhoenixStarterWeb do
+    pipe_through [:tus]
+
+    add_tus_routes(TusController)
+  end
+
+  scope "/", AshPhoenixStarterWeb do
+    live "/book/express", ExpressBookingLive
+  end
+
+  scope "/", AshPhoenixStarterWeb do
+    pipe_through :browser
+
+    ash_authentication_live_session :authenticated_routes do
+      # in each liveview, add one of the following at the top of the module:
+      #
+      # If an authenticated user must be present:
+      # on_mount {AshPhoenixStarterWeb.LiveUserAuth, :live_user_required}
+      #
+      # If an authenticated user *may* be present:
+      # on_mount {AshPhoenixStarterWeb.LiveUserAuth, :live_user_optional}
+      #
+      # If an authenticated user must *not* be present:
+      # on_mount {AshPhoenixStarterWeb.LiveUserAuth, :live_no_user}
+      #         AshPhoenixStarterWeb.LiveUri
+
+      live "/dashboard", DashboardLive
+      live "/settings", Settings.SettingsLive
+
+      live "/reports/graphs", Reports.GraphsLive
+      live "/reports/summaries", Reports.SummariesLive
+
+      live "/accounts/organizations", Accounts.Organizations.OrganizationsLive
+      live "/accounts/organizations/new", Accounts.Organizations.CreateLive
+
+      live "/accounts/users", Accounts.Users.UsersLive
+      live "/accounts/users/invite", Accounts.Users.InviteUserLive
+      live "/accounts/users/inviteconfirmation", Accounts.Users.InviteUserConfirmationLive
+      live "/accounts/users/invitations", Accounts.Users.UserInvitationsLive
+      live "/accounts/users/:user_id/groups", Accounts.Users.UserGroupsLive
+
+      live "/accounts/groups", Accounts.Groups.GroupsLive
+      live "/accounts/groups/new", Accounts.Groups.CreateLive
+      live "/accounts/groups/edit/:id", Accounts.Groups.EditLive
+      live "/accounts/groups/permissions/:group_id", Accounts.Groups.GroupPermissionsLive
+
+      live "/ledger/transfers", Ledger.TransfersLive
+      live "/ledger/journal", Ledger.JournalLive
+      live "/ledger/chart-of-accounts", Ledger.ChartOfAccountsLive
+      live "/ledger/chart-of-accounts/new", Ledger.CreateNewAccountLive
+
+      live "/ussd", Ussd.UssdsLive
+      live "/files/manage", Files.FileManagerLive
+
+      # Vendor routes
+      live "/vendors", VendorIndexLive, :index
+      live "/vendors/new", VendorFormLive, :new
+      live "/vendors/:id/edit", VendorFormLive, :edit
+
+      # Merchant routes
+      live "/merchants", MerchantIndexLive, :index
+      live "/merchants/new", MerchantFormLive, :new
+      live "/merchants/:id/edit", MerchantFormLive, :edit
+
+      # Product routes
+      live "/products", ProductIndexLive, :index
+      live "/products/new", ProductFormLive, :new
+      live "/products/:id/edit", ProductFormLive, :edit
+
+      live "/hotel/media", HotelMediaLive, :index
+
+      live "/admin/regions", Admin.RegionAdminLive, :index
+    end
+  end
+
+  scope "/", AshPhoenixStarterWeb do
+    pipe_through :browser
+
+    get "/", PageController, :home
+
+    live "/landing", LandingLive, :index
+
+    live "/inventory/dashboard", InventoryDashboardLive, :index
+
+    auth_routes AuthController, AshPhoenixStarter.Accounts.User, path: "/auth"
+    sign_out_route AuthController
+
+    # invitations
+    get "/accounts/users/invitations/:tenant/:token/accept",
+        OrganizationInvitationAcceptanceController,
+        :accept
+
+    get "/accounts/users/invitations/:tenant/:token/reject",
+        OrganizationInvitationAcceptanceController,
+        :reject
+
+    # user Impersonations
+    get "/accounts/users/impersonate/:user_id", AuthController, :impersonate
+    get "/accounts/users/stop/impersonation", AuthController, :stop_impersonating
+
+    # Remove these if you'd like to use your own authentication views
+    sign_in_route register_path: "/register",
+                  reset_path: "/reset",
+                  auth_routes_prefix: "/auth",
+                  on_mount: [{AshPhoenixStarterWeb.LiveUserAuth, :live_no_user}],
+                  overrides: [
+                    AshPhoenixStarterWeb.AuthOverrides,
+                    AshAuthentication.Phoenix.Overrides.DaisyUI
+                  ]
+
+    # Remove this if you do not want to use the reset password feature
+    reset_route auth_routes_prefix: "/auth",
+                overrides: [
+                  AshPhoenixStarterWeb.AuthOverrides,
+                  AshAuthentication.Phoenix.Overrides.Default,
+                  AshAuthentication.Components.AltchaExtra
+                ]
+
+    # Remove this if you do not use the confirmation strategy
+    confirm_route AshPhoenixStarter.Accounts.User, :confirm_new_user,
+      auth_routes_prefix: "/auth",
+      overrides: [AshPhoenixStarterWeb.AuthOverrides, AshAuthentication.Phoenix.Overrides.Default]
+
+    # Remove this if you do not use the magic link strategy.
+    magic_sign_in_route(AshPhoenixStarter.Accounts.User, :magic_link,
+      auth_routes_prefix: "/auth",
+      overrides: [AshPhoenixStarterWeb.AuthOverrides, AshAuthentication.Phoenix.Overrides.Default]
+    )
+  end
+
+  # Enable LiveDashboard and Swoosh mailbox preview in development
+  if Application.compile_env(:ash_phoenix_starter, :dev_routes) do
+    import Phoenix.LiveDashboard.Router
+
+    scope "/dev" do
+      pipe_through :browser
+
+      live_dashboard "/dashboard", metrics: AshPhoenixStarterWeb.Telemetry
+      forward "/mailbox", Plug.Swoosh.MailboxPreview
+    end
+  end
+
+  defp require_tus_user(conn, _opts) do
+    if conn.assigns[:current_user] do
+      conn
+    else
+      conn
+      |> send_resp(401, "Unauthorized")
+      |> halt()
+    end
+  end
+end

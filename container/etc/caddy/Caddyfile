@@ -1,0 +1,26 @@
+{
+	# Required if you allow hotels to point their own custom domains at your OCI VMs
+	on_demand_tls {
+		# Optional: point to an internal Phoenix endpoint that returns 200 if the domain belongs to a valid hotel
+		ask http://127.0.0
+	}
+}
+
+yourdomain.com, *.yourdomain.com {
+	encode zstd gzip
+
+	reverse_proxy 127.0.0.1:4000 {
+		# Preserve real visitor IP for geo-routing and rate limiting
+		header_up X-Real-IP {remote_host}
+	}
+}
+
+# Catch-all for custom hotel domains (e.g., ://grandhotel.com)
+:443 {
+	tls {
+		on_demand
+	}
+
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:4000
+}

@@ -1,0 +1,139 @@
+<div class="relative bg-white bg-opacity-20 bg-cover bg-center">
+  <img class="hidden md:block absolute h-full w-full object-cover" src="/images/landing.webp" />
+  <div class="lg:ml-20 pb-5 lg:pt-40 md:pb-40 text-white lg:w-1/3">
+    <.live_component module={AshPhoenixStarterWeb.LocationLive.Search} id="locationSearch" />
+  </div>
+</div>
+
+<div class="bg-white">
+  <h2 class="text-center lg:text-4xl pt-3 text-2xl">Why Rent a Home with Us?</h2>
+  <hr class="w-56 h-1 mx-auto bg-gray-100 border-2 rounded-sm md:my-2 dark:bg-gray-700" />
+  <div class="flex flex-wrap gap-4 items-top justify-center p-6">
+    <div class="w-80">
+      <div class="bg-green-500 p-20 text-center">Quality Homes</div>
+      <h2 class="text-center">
+        Conveniently located in great neighborhoods across the country where people want to
+        live, work and play.
+      </h2>
+    </div>
+    <div class="w-80">
+      <div class="bg-green-500 p-20 text-center">Pet Friendly</div>
+      <h2 class="text-center">
+        Pack the water bowls and chew toys! Your four-legged family members are welcome
+        here. *Breed restrictions apply
+      </h2>
+    </div>
+    <div class="w-80">
+      <div class="bg-green-500 p-20 text-center">Convenience</div>
+      <h2 class="text-center">
+        Our goal is to make renting a home easy with self-showings, applications, payment
+        options and service requests right at your fingertips.
+      </h2>
+    </div>
+  </div>
+
+  <div id="carousel-wrapper" class="width-full bg-green-700 halftone">
+    <div id="animation-carousel" class="mx-auto relative w-3/4" data-carousel="static">
+      <!-- Carousel wrapper -->
+      <div class="relative h-56 overflow-hidden rounded-lg md:h-96 ">
+        <!-- Item 1 -->
+        <div class="hidden duration-200 ease-linear" data-carousel-item>
+          <img src="/images/carousel/1.svg" class="h-full mx-auto" alt="..." />
+        </div>
+        <!-- Item 2 -->
+        <div class="hidden duration-200 ease-linear" data-carousel-item>
+          <img src="/images/carousel/2.svg" class="h-full mx-auto" alt="..." />
+        </div>
+        <!-- Item 3 -->
+        <div class="hidden duration-200 ease-linear" data-carousel-item="active">
+          <img src="/images/carousel/3.svg" class="h-full mx-auto" alt="..." />
+        </div>
+        <!-- Item 4 -->
+        <div class="hidden duration-200 ease-linear" data-carousel-item>
+          <img src="/images/carousel/4.svg" class="h-full mx-auto" alt="..." />
+        </div>
+        <!-- Item 5 -->
+        <div class="hidden duration-200 ease-linear" data-carousel-item>
+          <img src="/images/carousel/5.svg" class="h-full mx-auto" alt="..." />
+        </div>
+      </div>
+      <!-- Slider controls -->
+      <.button
+        class="absolute top-0 start-0 z-30 flex items-center justify-center h-full px-4 cursor-pointer group focus:outline-none"
+        data-carousel-prev
+      >
+        <span class="inline-flex items-center justify-center w-10 h-10 rounded-full bg-black/30 dark:bg-gray-800/30 group-hover:bg-white/50 dark:group-hover:bg-gray-800/60 group-focus:ring-4 group-focus:ring-white dark:group-focus:ring-gray-800/70 group-focus:outline-none">
+          <svg
+            class="w-4 h-4 text-white dark:text-gray-800 rtl:rotate-180"
+            aria-hidden="true"
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 6 10"
+          >
+            <path
+              stroke="currentColor"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M5 1 1 5l4 4"
+            />
+          </svg>
+          <span class="sr-only">Previous</span>
+        </span>
+      </.button>
+      <.button
+        class="absolute top-0 end-0 z-30 flex items-center justify-center h-full px-4 cursor-pointer group focus:outline-none"
+        data-carousel-next
+      >
+        <span class="inline-flex items-center justify-center w-10 h-10 rounded-full bg-black/30 dark:bg-gray-800/30 group-hover:bg-white/50 dark:group-hover:bg-gray-800/60 group-focus:ring-4 group-focus:ring-white dark:group-focus:ring-gray-800/70 group-focus:outline-none">
+          <svg
+            class="w-4 h-4 text-white dark:text-gray-800 rtl:rotate-180"
+            aria-hidden="true"
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 6 10"
+          >
+            <path
+              stroke="currentColor"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="m1 9 4-4-4-4"
+            />
+          </svg>
+          <span class="sr-only">Next</span>
+        </span>
+      </.button>
+    </div>
+  </div>
+
+  <h2 class="text-center lg:text-4xl pt-3 text-xl">Everything You Want in a Home</h2>
+  <h3 class="text-center text-sm pt-3">
+    Whether you’re looking for more space, great amenities, or more flexibility,
+    we’re here to help you find the home that fits your life.
+  </h3>
+  <hr class="w-56 h-1 mx-auto bg-gray-100 border-2 rounded-sm md:my-2 dark:bg-gray-700" />
+  <div class="flex flex-wrap gap-4 items-top justify-center p-6">
+    <div class="w-80">
+      <div class="bg-yellow-500 p-20 text-center">Freedom</div>
+      <h2 class="text-center">
+        Enjoy the freedom, extra space, and privacy that comes with living in a home. No
+        more shared walls - it’s time to spread out and live comfortably.
+      </h2>
+    </div>
+    <div class="w-80">
+      <div class="bg-green-500 p-20 text-center">Community</div>
+      <h2 class="text-center">
+        Experience all the benefits that come with living in an HOA community, from
+        beautifully-kept neighborhoods to great amenities and facilities.
+      </h2>
+    </div>
+    <div class="w-80">
+      <div class="bg-green-300 p-20 text-center">Flexibility</div>
+      <h2 class="text-center">
+        Select floor plans that accommodate your needs and sign up for hassle-free
+        maintenance. Your home should fit your life.
+      </h2>
+    </div>
+  </div>
+</div>

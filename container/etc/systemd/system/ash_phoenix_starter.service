@@ -1,0 +1,21 @@
+[Unit]
+Description=AshPhoenixStarter Phoenix Release
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/opt/ash_phoenix_starter
+EnvironmentFile=/etc/ash_phoenix_starter.env
+
+ExecStart=/opt/ash_phoenix_starter/bin/ash_phoenix_starter start
+ExecStop=/opt/ash_phoenix_starter/bin/ash_phoenix_starter stop
+
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

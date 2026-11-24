@@ -1,0 +1,366 @@
+defmodule AshPhoenixStarter.Accounts.User.Actions do
+  use Spark.Dsl.Fragment, of: Ash.Resource
+
+  actions do
+    defaults [:read]
+
+    read :get_by_id do
+      description "Get a user by their primary ID"
+      get? true
+
+      argument :id, :uuid do
+        allow_nil? false
+      end
+
+      filter expr(id == ^arg(:id))
+    end
+
+    read :get_by_subject do
+      description "Get a user by the subject claim in a JWT"
+      argument :subject, :string, allow_nil?: false
+      get? true
+      prepare AshAuthentication.Preparations.FilterBySubject
+    end
+
+    read :admin_read do
+      description "List users as admin"
+      filter expr(organizations.domain == ^actor(:current_organization))
+    end
+
+    update :change_password do
+      # Use this action to allow users to change their password by providing
+      # their current password and a new password.
+
+      require_atomic? false
+      accept []
+      argument :current_password, :string, sensitive?: true, allow_nil?: false
+
+      argument :password, :string,
+        sensitive?: true,
+        allow_nil?: false,
+        constraints: [min_length: 8]
+
+      argument :password_confirmation, :string, sensitive?: true, allow_nil?: false
+
+      validate confirm(:password, :password_confirmation)
+
+      validate {AshAuthentication.Strategy.Password.PasswordValidation,
+                strategy_name: :password, password_argument: :current_password}
+
+      change {AshAuthentication.Strategy.Password.HashPasswordChange, strategy_name: :password}
+    end
+
+    read :sign_in_with_password do
+      description "Attempt to sign in using a email and password."
+      get? true
+
+      argument :email, :ci_string do
+        description "The email to use for retrieving the user."
+        allow_nil? false
+      end
+
+      argument :password, :string do
+        description "The password to check for the matching user."
+        allow_nil? false
+        sensitive? true
+      end
+
+      # validates the provided email and password and generates a token
+      prepare AshAuthentication.Strategy.Password.SignInPreparation
+
+      metadata :token, :string do
+        description "A JWT that can be used to authenticate the user."
+        allow_nil? false
+      end
+    end
+
+    read :sign_in_with_token do
+      # In the generated sign in components, we validate the
+      # email and password directly in the LiveView
+      # and generate a short-lived token that can be used to sign in over
+      # a standard controller action, exchanging it for a standard token.
+      # This action performs that exchange. If you do not use the generated
+      # liveviews, you may remove this action, and set
+      # `sign_in_tokens_enabled? false` in the password strategy.
+
+      description "Attempt to sign in using a short-lived sign in token."
+      get? true
+
+      argument :token, :string do
+        description "The short-lived sign in token."
+        allow_nil? false
+        sensitive? true
+      end
+
+      # validates the provided sign in token and generates a token
+      prepare AshAuthentication.Strategy.Password.SignInWithTokenPreparation
+
+      metadata :token, :string do
+        description "A JWT that can be used to authenticate the user."
+        allow_nil? false
+      end
+    end
+
+    create :register_with_password do
+      description "Register a new user with a email and password."
+
+      notifiers [AshPhoenixStarter.Accounts.User.Notifiers.CreatePersonalOrganizationNotification]
+
+      argument :email, :ci_string do
+        allow_nil? false
+      end
+
+      argument :password, :string do
+        description "The proposed password for the user, in plain text."
+        allow_nil? false
+        constraints min_length: 8
+        sensitive? true
+      end
+
+      argument :password_confirmation, :string do
+        description "The proposed password for the user (again), in plain text."
+        allow_nil? false
+        sensitive? true
+      end
+
+      argument :altcha, :string, allow_nil?: false
+      change AshPhoenixStarter.Changes.VerifyAltcha
+
+      # Sets the email from the argument
+      change set_attribute(:email, arg(:email))
+
+      # Hashes the provided password
+      change AshAuthentication.Strategy.Password.HashPasswordChange
+
+      # Generates an authentication token for the user
+      change AshAuthentication.GenerateTokenChange
+
+      # validates that the password matches the confirmation
+      validate AshAuthentication.Strategy.Password.PasswordConfirmationValidation
+
+      metadata :token, :string do
+        description "A JWT that can be used to authenticate the user."
+        allow_nil? false
+      end
+    end
+
+    action :request_password_reset_token do
+      description "Send password reset instructions to a user if they exist."
+
+      argument :email, :ci_string do
+        allow_nil? false
+      end
+
+      # creates a reset token and invokes the relevant senders
+      run {AshAuthentication.Strategy.Password.RequestPasswordReset, action: :get_by_email}
+    end
+
+    read :get_by_email do
+      description "Looks up a user by their email"
+      get? true
+
+      argument :email, :ci_string do
+        allow_nil? false
+      end
+
+      filter expr(email == ^arg(:email))
+    end
+
+    update :reset_password_with_token do
+      argument :reset_token, :string do
+        allow_nil? false
+        sensitive? true
+      end
+
+      argument :password, :string do
+        description "The proposed password for the user, in plain text."
+        allow_nil? false
+        constraints min_length: 8
+        sensitive? true
+      end
+
+      argument :password_confirmation, :string do
+        description "The proposed password for the user (again), in plain text."
+        allow_nil? false
+        sensitive? true
+      end
+
+      # validates the provided reset token
+      validate AshAuthentication.Strategy.Password.ResetTokenValidation
+
+      # validates that the password matches the confirmation
+      validate AshAuthentication.Strategy.Password.PasswordConfirmationValidation
+
+      # Hashes the provided password
+      change AshAuthentication.Strategy.Password.HashPasswordChange
+
+      # Generates an authentication token for the user
+      change AshAuthentication.GenerateTokenChange
+    end
+
+    create :create do
+      primary? true
+      notifiers [AshPhoenixStarter.Accounts.User.Notifiers.CreatePersonalOrganizationNotification]
+    end
+
+    create :sign_in_with_magic_link do
+      description "Sign in or register a user with magic link."
+
+      notifiers [AshPhoenixStarter.Accounts.User.Notifiers.CreatePersonalOrganizationNotification]
+
+      argument :token, :string do
+        description "The token from the magic link that was sent to the user"
+        allow_nil? false
+      end
+
+      upsert? true
+      upsert_identity :unique_email
+      upsert_fields [:email]
+
+      # Uses the information from the token to create or sign in the user
+      change AshAuthentication.Strategy.MagicLink.SignInChange
+
+      metadata :token, :string do
+        allow_nil? false
+      end
+    end
+
+    action :request_magic_link do
+      argument :email, :ci_string do
+        allow_nil? false
+      end
+
+      run AshAuthentication.Strategy.MagicLink.Request
+    end
+
+    update :set_current_organization do
+      description "Set user's current organization"
+
+      argument :organization, :string do
+        allow_nil? false
+        sensitive? false
+      end
+
+      change set_attribute(:current_organization, arg(:organization))
+    end
+
+    update :switch_organization_to do
+      description "Swith user organization to the new one"
+      argument :organization, :string
+      validate AshPhoenixStarter.Accounts.User.Validations.ValidateBelongsToOrganization
+      change set_attribute(:current_organization, arg(:organization))
+    end
+
+    create :invite do
+      description "Invite a new user to the organization"
+      accept [:email]
+
+      notifiers [AshPhoenixStarter.Accounts.User.Notifiers.CreatePersonalOrganizationNotification]
+
+      validate AshPhoenixStarter.Accounts.User.Validations.ValidateNewToOrganization
+      manual AshPhoenixStarter.Accounts.User.Actions.CreateUserIfNotExists
+      change AshPhoenixStarter.Accounts.User.Changes.AddToOrganization
+    end
+
+    action :force_sign_in, :map do
+      description "Force login without knowing user password. Only for super admins"
+
+      argument :conn, :map do
+        description "The connection for this impersonation"
+      end
+
+      argument :purpose, :string do
+        description "The purpose of this sign in"
+      end
+
+      argument :user_id, :uuid do
+        description "The user ID of the person being impersonated"
+      end
+
+      run AshPhoenixStarter.Accounts.User.Actions.ForceSignIn
+    end
+
+    update :admin_set_default_password do
+      description "Resets a user's password to the default system password"
+      accept []
+      require_atomic? false
+
+      change fn changeset, _context ->
+        default_password = System.get_env("DEFAULT_ADMIN_PASSWORD") || "AdminPassword123!"
+
+        changeset
+        |> Ash.Changeset.set_argument(:password, default_password)
+        |> Ash.Changeset.set_argument(:password_confirmation, default_password)
+      end
+
+      argument :password, :string, sensitive?: true, allow_nil?: true
+      argument :password_confirmation, :string, sensitive?: true, allow_nil?: true
+
+      change {AshAuthentication.Strategy.Password.HashPasswordChange, strategy_name: :password}
+    end
+
+    read :list_empty_password_admins do
+      description "List admin users who have a blank or missing hashed password"
+
+      # Pull super users from configuration or specify your filter condition
+      filter expr(
+               (is_nil(hashed_password) or hashed_password == "") and
+                 email in ^Application.compile_env(
+                   :ash_phoenix_starter,
+                   :super_users,
+                   "admin@example.com"
+                 )
+             )
+    end
+
+    create :seed_user do
+      description "Admin/Seeder action to create a user bypassing Altcha verification."
+
+      argument :email, :ci_string do
+        allow_nil? false
+      end
+
+      argument :password, :string do
+        description "The proposed password for the user, in plain text."
+        allow_nil? false
+        constraints min_length: 8
+        sensitive? true
+      end
+
+      argument :password_confirmation, :string do
+        description "The proposed password for the user (again), in plain text."
+        allow_nil? false
+        sensitive? true
+      end
+
+      # Instruct AshAuthentication which strategy context to bind to
+      change set_context(%{strategy_name: :password})
+
+      # Sets the email from the argument
+      change set_attribute(:email, arg(:email))
+
+      # Hashes the provided password
+      change AshAuthentication.Strategy.Password.HashPasswordChange
+
+      # Generates an authentication token for the user
+      change AshAuthentication.GenerateTokenChange
+
+      # Validates that the password matches the confirmation
+      validate AshAuthentication.Strategy.Password.PasswordConfirmationValidation
+
+      metadata :token, :string do
+        description "A JWT that can be used to authenticate the user."
+        allow_nil? false
+      end
+    end
+  end
+
+  code_interface do
+    define :get_by_id, action: :get_by_id
+    define :list_empty_password_admins, action: :list_empty_password_admins
+    define :admin_set_default_password, action: :admin_set_default_password
+    define :force_sign_in, action: :force_sign_in
+    define :get_by_email, action: :get_by_email
+    define :sign_in_with_password, action: :sign_in_with_password
+  end
+end

@@ -1,0 +1,132 @@
+name: Test & Deploy to Oracle Cloud
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04-arm
+    env:
+      MIX_ENV: test
+      DATABASE_URL: ecto://postgres:postgres@localhost:5432/ash_phoenix_starter_test
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: ash_phoenix_starter_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Elixir & OTP
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: "27.2"
+          elixir-version: "1.18.3"
+
+      - name: Cache Mix dependencies (test)
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-test-mix-${{ hashFiles('**/mix.lock') }}
+          restore-keys: ${{ runner.os }}-test-mix-
+
+      - name: Install dependencies & run tests
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+          mix deps.get
+          mix ecto.create --quiet
+          mix ecto.migrate --quiet
+          mix test
+
+  build-and-deploy:
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-24.04-arm
+    env:
+      MIX_ENV: prod
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Elixir & OTP
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: "27.2"
+          elixir-version: "1.18.3"
+
+      - name: Cache Mix dependencies (prod)
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-prod-mix-${{ hashFiles('**/mix.lock') }}
+          restore-keys: ${{ runner.os }}-prod-mix-
+
+      - name: Install dependencies & build release
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+          mix deps.get --only prod
+          mix assets.deploy
+          mix release --overwrite
+          tar -czf /tmp/ash_phoenix_starter.tar.gz -C _build/prod/rel/ash_phoenix_starter .
+
+      - name: Configure SSH for OCI VMs
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.OCI_SSH_PRIVATE_KEY }}" > ~/.ssh/oci_key
+          chmod 600 ~/.ssh/oci_key
+
+      - name: Run Ecto migrations & rolling restart
+        env:
+          OCI_NODES: ${{ secrets.OCI_NODES }}
+        run: |
+          SSH_OPTS="-i ~/.ssh/oci_key -o StrictHostKeyChecking=no"
+          NODES=($OCI_NODES)
+          PRIMARY_NODE="${NODES[0]}"
+
+          echo "==> Running migrations on ${PRIMARY_NODE}..."
+          scp $SSH_OPTS /tmp/ash_phoenix_starter.tar.gz "${PRIMARY_NODE}:/tmp/ash_phoenix_starter.tar.gz"
+          ssh $SSH_OPTS "${PRIMARY_NODE}" "
+            rm -rf /opt/ash_phoenix_starter_migrate &&
+            mkdir -p /opt/ash_phoenix_starter_migrate &&
+            tar -xzf /tmp/ash_phoenix_starter.tar.gz -C /opt/ash_phoenix_starter_migrate &&
+            set -a && source /etc/ash_phoenix_starter.env && set +a &&
+            /opt/ash_phoenix_starter_migrate/bin/ash_phoenix_starter eval 'AshPhoenixStarter.Release.migrate()' &&
+            rm -rf /opt/ash_phoenix_starter_migrate
+          "
+
+          echo "==> Rolling restart across all OCI nodes..."
+          for NODE in "${NODES[@]}"; do
+            echo "--> Deploying to ${NODE}..."
+            scp $SSH_OPTS /tmp/ash_phoenix_starter.tar.gz "${NODE}:/tmp/ash_phoenix_starter.tar.gz"
+            ssh $SSH_OPTS "${NODE}" "
+              sudo systemctl stop ash_phoenix_starter &&
+              rm -rf /opt/ash_phoenix_starter &&
+              mkdir -p /opt/ash_phoenix_starter &&
+              tar -xzf /tmp/ash_phoenix_starter.tar.gz -C /opt/ash_phoenix_starter &&
+              rm -f /tmp/ash_phoenix_starter.tar.gz &&
+              sudo systemctl start ash_phoenix_starter
+            "
+            sleep 8
+          done

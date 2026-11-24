@@ -1,0 +1,126 @@
+version: 2.1
+
+jobs:
+  test:
+    docker:
+      - image: elixir:1.19-slim
+        environment:
+          MIX_ENV: test
+          DATABASE_URL: ecto://postgres:postgres@127.0.0.1:5432/ash_phoenix_starter_test
+      - image: postgres:16-alpine
+        environment:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: ash_phoenix_starter_test
+
+    working_directory: ~/app
+
+    steps:
+      - checkout
+
+      - run:
+          name: Install ImageMagick, WebP & Build Tools
+          command: |
+            apt-get update -y && apt-get install -y --no-install-recommends \
+              build-essential \
+              git \
+              libzstd-dev \
+              imagemagick \
+              libwebp-dev \
+              webp \
+              postgresql-client \
+              && rm -rf /var/lib/apt/lists/*
+
+      - restore_cache:
+          keys:
+            - v1-mix-deps-{{ checksum "mix.lock" }}
+            - v1-mix-deps-
+
+      - run:
+          name: Install Hex, Rebar & Dependencies
+          command: |
+            mix local.hex --force
+            mix local.rebar --force
+            mix deps.get
+            mix deps.compile
+
+      - save_cache:
+          key: v1-mix-deps-{{ checksum "mix.lock" }}
+          paths:
+            - deps
+            - _build
+
+      - run:
+          name: Wait for Postgres & Run Tests
+          command: |
+            until pg_isready -h 127.0.0.1 -p 5432 -U postgres; do sleep 1; done
+            mix ecto.create --quiet
+            mix ecto.migrate --quiet
+            mix test
+
+workflows:
+  version: 2
+  test_and_verify:
+    jobs:
+      - test
+
+  build_and_push_ocir:
+    # Use arm.medium if deploying to OCI Ampere A1 VMs, or standard machine if x86_64
+    machine:
+      image: ubuntu-2404:current
+    resource_class: arm.medium
+
+    steps:
+      - checkout
+
+      - run:
+          name: Log in to Oracle Cloud Infrastructure Registry (OCIR)
+          command: |
+            echo "$OCIR_AUTH_TOKEN" | docker login "${OCIR_REGION_KEY}.ocir.io" \
+              --username "$OCIR_USERNAME" \
+              --password-stdin
+
+      - run:
+          name: Build & Push Production Runner Image to OCIR
+          command: |
+            IMAGE_BASE="${OCIR_REGION_KEY}.ocir.io/${OCIR_NAMESPACE}/${OCIR_REPO}"
+
+            docker build \
+              --target runner \
+              -t "${IMAGE_BASE}:${CIRCLE_SHA1}" \
+              -t "${IMAGE_BASE}:latest" \
+              .
+
+            docker push "${IMAGE_BASE}:${CIRCLE_SHA1}"
+            docker push "${IMAGE_BASE}:latest"
+            - add_ssh_keys:
+          fingerprints:
+            - "YOUR_CIRCLECI_SSH_KEY_FINGERPRINT"
+
+      - run:
+          name: Rolling Deploy to OCI Regional VMs
+          command: |
+            for NODE in $OCI_NODES; do
+              echo "==> Rolling update on ${NODE}..."
+              ssh -o StrictHostKeyChecking=no "${NODE}" "
+                cd /opt/ash_phoenix_starter &&
+                docker compose pull &&
+                docker compose up -d &&
+                docker image prune -f
+              "
+              echo "==> Waiting 10s for ${NODE} to rejoin libcluster + Horde..."
+              sleep 10
+            done
+      
+
+workflows:
+  version: 2
+  test_and_deploy:
+    jobs:
+      - test
+      - build_and_push_ocir:
+          requires:
+            - test
+          filters:
+            branches:
+              only: main
